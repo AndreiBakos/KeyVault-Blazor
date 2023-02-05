@@ -6,4 +6,12 @@
         <ImplicitUsings>enable</ImplicitUsings>
     </PropertyGroup>
 
+    <ItemGroup>
+      <None Update="Pages\LogIn.razor.css">
+        <DependentUpon>LogIn.razor</DependentUpon>
+      </None>
+      <None Include="wwwroot\Assets\hide-password.svg" />
+      <None Include="wwwroot\Assets\show-password.svg" />
+    </ItemGroup>
+
 </Project>
