@@ -1,0 +1,36 @@
+@using KeyVault.Models.User
+<div style="background-color: #363636">
+    <div style="display: flex; flex-direction: column;"
+         class="create-secret-conatiner">
+        @if (FoundUsers.Count == 0 && NewUserName.Length > 0)
+        {
+            <label>@NoUserFoundErrorTrigger</label>
+        }
+        else
+        {
+            @foreach (var user in FoundUsers)
+            {
+                <div class="secrets-content" key="@user.Id">
+                    <p class="secrets-values">@user.UserName</p>
+                    <p class="secrets-values">@user.Email</p>
+                <img class="delete-secret-btn" 
+                     src="@(user.Checked ? "Assets/checked-box.svg" : "Assets/unchecked-box.svg")"
+                     alt=""/>
+                </div>
+            }
+        }
+
+    </div>
+    <button class="submit-new-secret"
+            type="submit">Add User</button>
+</div>
+@code {
+    [Parameter]
+    public List<UserForHomeSearch> FoundUsers { get; set; }
+    
+    [Parameter]
+    public string NewUserName { get; set; }
+    
+    [Parameter]
+    public string NoUserFoundErrorTrigger { get; set; }
+}

@@ -1,3 +1,4 @@
+@import "home.css";
 .login-container {
     display: grid;
     place-items: center;

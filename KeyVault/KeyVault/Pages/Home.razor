@@ -1,5 +1,10 @@
 @page "/home"
-<h3>Home</h3>
+@using KeyVault.Models.Secrets
+
+<div>
+    <Header CurrentPage="@SecretsPage.MySecrets"/>
+    <MySecrets/>
+</div>
 
 @code {
     

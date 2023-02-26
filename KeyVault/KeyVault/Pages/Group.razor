@@ -1,0 +1,151 @@
+@page "/group/{id}"
+@using KeyVault.Shared.GroupComponents
+@using KeyVault.Data
+@using KeyVault.Entities
+@using KeyVault.Models.User
+@using Microsoft.AspNetCore.Components.Rendering
+@inject NavigationManager Navigator
+
+<div style="display: flex; flex-direction: column; margin-top: 10px">
+    <div style="display: flex; justify-content: space-between">
+        <div style="display: flex; align-items: center">
+            <img class="enter-group-secret"
+                 style="width: 40px; height: 40px"
+                 src="Assets/back-to-groups.svg"
+                 @onclick="NavigateToGroups"/>
+            <p style="font-weight: bolder;
+                font-size: 30px;
+                margin-left: 20px;
+                padding-top: 3px">{currentGroup?.title}</p>
+        </div>
+        <div style="display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            width: 60%">
+            <button class="manage-members-btn"
+                    type="submit"
+                    @onclick="() => NewMemberPageTrigger = !NewMemberPageTrigger">Manage Members</button>
+            @* { *@
+            @*     currentGroup?.ownerId === contextComponent?.loggedInUser?.id && *@
+            @*     <button class="delete-group-btn"  *@
+            @*             type="submit">Delete Group</button> *@
+            @* } *@
+            <button class="delete-group-btn"
+                    type="submit">Delete Group</button>
+        </div>
+    </div>
+    <div style="justify-content: space-between; align-items: center"
+         class="create-secret-conatiner">
+        <div style="display: flex; align-items: center">
+            <img hidden="@IsNewSecretTriggered"
+                 class="create-secret-btn"
+                 src="@( IsNewSecretTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
+                 @onclick="() => { IsNewMemberTriggered = !IsNewMemberTriggered; NewUserName = String.Empty; }"
+            />
+            <label hidden="@IsNewSecretTriggered" 
+                   style="padding-left: 15px">Add Member</label>
+        </div>
+        <div style="display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            width: 70%">
+            @if(IsNewMemberTriggered)
+            {
+                <div style="display: flex;
+                    align-items: center;
+                    width: 100%">
+                    <input hidden="@( !IsNewMemberTriggered )"
+                           class="create-secret-input"
+                           type="text"
+                           @bind="@NewUserName" />
+                    <img class="enter-group-secret"
+                         style="width: 35px; height: 35px; padding-left: 15px"
+                         src="Assets/search-logo.svg" />
+                </div>        
+                
+            } else
+            {
+                <label hidden="@( !IsNewSecretTriggered )">Enter Secret Title</label>
+                <input hidden="@( !IsNewSecretTriggered )"
+                       class="create-secret-input"
+                       type="text"
+                       @bind="@NewSecretTitle"
+                       @oninput="ChangeSecretTitle"/>
+            }
+        </div>
+        <div style="display: flex; align-items: center">
+            <label hidden="@IsNewMemberTriggered"
+                   style="paddingRight: 15px">Create Secret</label>
+            <img hidden="@IsNewMemberTriggered"
+                 class="create-secret-btn"
+                 src="@( IsNewSecretTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
+                 @onclick="() => IsNewSecretTriggered = !IsNewSecretTriggered"
+            />
+        </div>
+    </div>
+    <div class="secrets-content-container">
+        @RenderContent
+    </div>                
+</div>
+
+@code {
+    [Parameter]
+    public string id { get; set; }
+
+    private bool IsNewSecretTriggered { get; set; } = false;
+    private bool IsNewMemberTriggered { get; set; } = false;
+    private bool NewMemberPageTrigger { get; set; } = false;
+    private List<UserForHomeSearch> FoundUsers { get; set; } = new List<UserForHomeSearch>();
+    private string NoUserFoundErrorTrigger { get; set; } = "";
+    private List<UserForHomeSearch> GroupMembersList { get; set; } = new List<UserForHomeSearch>();
+    private string NewUserName { get; set; } = "";
+    private string NewSecretTitle { get; set; } = "";
+    private List<Secret> GroupSecrets { get; set; } = new List<Secret>();
+
+    private void NavigateToGroups()
+    {
+        Navigator.NavigateTo("/groups");
+    }
+
+    private void ChangeSecretTitle(ChangeEventArgs e)
+    {
+        NewSecretTitle = (string)e.Value;
+        StateHasChanged();
+        Console.WriteLine($"Changing secret title to {NewSecretTitle}");
+    }
+    
+    private void RenderContent(RenderTreeBuilder builder)
+    {
+        if (IsNewSecretTriggered)
+        {
+            builder.OpenComponent<NewSecretsScreen>(0);
+            builder.AddAttribute(1, "IsNewSecretTriggered", IsNewSecretTriggered);
+            builder.AddAttribute(2, "NewSecretTitle", NewSecretTitle);
+            builder.CloseComponent();
+            return;
+        }
+
+        if(IsNewMemberTriggered)
+        {
+            builder.OpenComponent<NewMemberScreen>(0);
+            builder.AddAttribute(1, "FoundUsers", FoundUsers);
+            builder.AddAttribute(2, "NewUserName", NewUserName);
+            builder.AddAttribute(3, "NoUserFoundErrorTrigger", NoUserFoundErrorTrigger);
+            builder.CloseComponent();
+            return;
+        }
+
+        if (NewMemberPageTrigger)
+        {
+            builder.OpenComponent<GroupMembers>(0);
+            builder.AddAttribute(1, "GroupMembersList", GroupMembersList);
+            builder.CloseComponent();
+            return;
+        }
+
+        builder.OpenComponent<Secrets>(0);
+        builder.AddAttribute(1, "GroupSecrets", GroupSecrets);
+        builder.CloseComponent();        
+    }
+    
+}
