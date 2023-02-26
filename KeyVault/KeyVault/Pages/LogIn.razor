@@ -1,0 +1,60 @@
+@page "/"
+@inject NavigationManager Navigation
+
+<head>
+    <link rel="stylesheet" href="~/css/shared.css" />
+</head>
+
+<div class="login-container">
+    <h1 class="header-text">Welcome to KeyVault!</h1>
+    <div class="form-container">
+        <div class="form-group">
+            <p>Email Value: @Email</p>
+            <label>Email:</label>
+            <input style="border: 0; outline: none; color: black; padding: 15px" class="password-input-container" type="text" @bind="@Email"/>
+        </div>
+        <div class="form-group">
+            <p>Password Value: @Password</p>
+            <label> Password:</label>
+            <div class="password-input-container">
+                <input style="border: 0;
+                 color: black;
+                  background-color: #ffffff00;
+                   width: 90%;
+                    height: 100%;
+                    padding: 15px;"
+                       class="password-input-container" 
+                       type="@( IsHidden ? "password" : "text" )" @bind="@Password"/>
+                <img class="show-hide-password" style="width: 40px; height: 40px; align-self: center"
+                     src="@( IsHidden ? "Assets/hide-password.svg" : "Assets/show-password.svg" )" 
+                     @onclick="() => IsHidden=!IsHidden"/>
+            </div>
+        </div>
+        <div style="display: flex; color: black; align-self: center">
+            <p style="color: #ffffffee">Don't have an account?</p>
+            <button class="sign-up-button" type="button" @onclick="GoToSignUp">Sign Up</button>
+        </div>
+        <button class="submit-btn" type="button" @onclick="GoToHome">Login</button>
+    </div>
+</div>
+
+@code {
+    private string Email { get; set; } = "";
+    private string Password { get; set; } = "";
+    private bool IsHidden { get; set; } = true;
+
+    private void GoToSignUp()
+    {
+        Navigation.NavigateTo("/signup");
+    }
+
+    private void GoToHome()
+    {
+        Navigation.NavigateTo("/home");
+    }
+
+    public void PrintEmail()
+    {
+        Console.WriteLine(Email);
+    }
+}

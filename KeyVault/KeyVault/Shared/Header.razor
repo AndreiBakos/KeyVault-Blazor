@@ -1,0 +1,57 @@
+@using KeyVault.Models
+@using KeyVault.Entities
+@using KeyVault.Models.Secrets
+@using KeyVault.Models.User
+@inject NavigationManager Navigation
+
+<div>
+    <div class="header-menu">
+        <h1 style="font-weight: bolder; font-size: 40px;">Welcome, @LoggedInUser.UserName</h1>
+        <div style="display: flex; flex-direction: column; align-items: center">
+            <img class="settings-menu" style="margin-right: 15px" 
+                 src="Assets/settings-logo.svg" width="50" height="50" alt=""
+                 @onclick="() => SettingMenu = !SettingMenu"/>
+            <ul class="settings-menu" 
+                hidden="@SettingMenu">
+                <li class="settings-menu" 
+                    style="color: #c23030"
+                    @onclick="Logout">Log Out</li>
+            </ul>
+        </div>
+    </div>            
+    <div class="secrets-menu-container">
+        <p style="background-color: @( CurrentPage == SecretsPage.MySecrets ? "#646cff" : "#404040" )"
+           class="secrets-container-header"
+           @onclick="NavigateHome">My Secrets</p>
+        <p style=" background-color: @( CurrentPage == SecretsPage.GroupSecrets ? "#646cff" : "#404040")" 
+           class="secrets-container-header"
+           @onclick="NavigateToGroups">Group Secrets</p>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public SecretsPage CurrentPage { get; set; }
+
+    public bool SettingMenu { get; set; } = true;
+    public UserForHome LoggedInUser { get; set; } = new UserForHome()
+    {
+        Id = Guid.NewGuid().ToString(),
+        UserName = "AndreiTest",
+        Email = "andrei@test.test"
+    };
+
+    private void NavigateHome()
+    {
+        Navigation.NavigateTo("/home");
+    }
+
+    private void NavigateToGroups()
+    {
+        Navigation.NavigateTo("/groups");
+    }
+    private void Logout()
+    {
+        Navigation.NavigateTo("/");
+    }
+}
