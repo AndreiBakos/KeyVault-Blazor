@@ -1,11 +1,45 @@
 @page "/home"
 @using KeyVault.Models.Secrets
+@using KeyVault.Models.User
+@using KeyVault.Tools
+@using KeyVault.Data
+@inject LocalStorage LocalStorage
+@inject IJSRuntime JsRuntime
+@inject NavigationManager Navigation
 
-<div>
-    <Header CurrentPage="@SecretsPage.MySecrets"/>
-    <MySecrets/>
-</div>
+@if (!IsFirstRender)
+{
+    <div>
+        <Header CurrentPage="@SecretsPage.MySecrets" LoggedInUser="@LoggedInUser" />
+        <MySecrets />
+    </div>
+}
 
 @code {
-    
+    private UserForHome LoggedInUser { get; set; } = new UserForHome();
+
+    private bool IsFirstRender { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CheckForUser();
+            IsFirstRender = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task CheckForUser()
+    {
+        var user = (UserForHome)await LocalStorage
+            .Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (user == null)
+        {
+            Navigation.NavigateTo("/login");
+        }
+
+        LoggedInUser = user;
+    }
 }

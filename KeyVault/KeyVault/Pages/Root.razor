@@ -1,0 +1,30 @@
+@page "/"
+@using KeyVault.Models.User
+@using KeyVault.Data
+@using KeyVault.Tools
+@inject NavigationManager Navigation
+@inject IJSRuntime JsRuntime
+
+@code {
+    private LocalStorage LocalStorageData { get; } = new LocalStorage();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CheckForUser();
+        }
+    }
+
+    private async Task CheckForUser()
+    {
+        var user = await LocalStorageData
+            .Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+        if (user == null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+        Navigation.NavigateTo("/home");
+    }
+}
