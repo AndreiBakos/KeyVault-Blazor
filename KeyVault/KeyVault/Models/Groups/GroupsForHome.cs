@@ -8,13 +8,13 @@ namespace KeyVault.Models.Groups
     public class GroupsForHome
     {
         [MaxLength(250)]
-        public string GroupId { get; }
+        public string GroupId { get; set; }
         
         [MaxLength(250)]
-        public string Title { get; }
+        public string Title { get; set; }
         
         [MaxLength(250)]
-        public string OwnerId { get; }
+        public string OwnerId { get; set; }
         
         public IEnumerable<UserForHome> Members { get; set; }
 
