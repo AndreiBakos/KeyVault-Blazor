@@ -1,12 +1,14 @@
 @page "/group/{id}"
 @using KeyVault.Shared.GroupComponents
-@using KeyVault.Entities
 @using KeyVault.Models.User
 @using KeyVault.Tools
 @using Microsoft.AspNetCore.Components.Rendering
 @using KeyVault.Data
 @using KeyVault.Models.Groups
 @using System.Net.Http.Headers
+@using KeyVault.Models.GroupSecrets
+@using KeyVault.Models.Secrets
+@using System.Net
 @inject NavigationManager Navigation
 @inject LocalStorage LocalStorage
 @inject IJSRuntime JsRuntime
@@ -108,7 +110,7 @@
     private List<UserForHomeSearch> GroupMembersList { get; set; } = new List<UserForHomeSearch>();
     private string NewUserName { get; set; } = "";
     private string NewSecretTitle { get; set; } = "";
-    private List<Secret> GroupSecrets { get; set; } = new List<Secret>();
+    private List<SecretForHome> GroupSecrets { get; set; } = new List<SecretForHome>();
     private UserForHome LoggedInUser { get; set; } = new UserForHome();
     private GroupsForHome CurrentGroup { get; set; } = new GroupsForHome();
 
@@ -118,6 +120,7 @@
         {
             await CheckForUser();
             CurrentGroup = await GetCurrentGroup();
+            GroupSecrets = await GetGroupSecrets();
             IsFirstRender = false;
         }
         StateHasChanged();
@@ -169,6 +172,84 @@
 
         return currentGroup;
     }
+
+    private async Task<List<SecretForHome>> GetGroupSecrets()
+    {
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return new List<SecretForHome>();
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.GetAsync($"https://localhost:5001/api/groups/secrets?groupId={id}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            Navigation.NavigateTo("/groups");
+            return new List<SecretForHome>();
+        }
+
+        var groupSecrets = await request.Content.ReadFromJsonAsync<List<SecretForHome>>();
+
+        if (groupSecrets == null)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            return new List<SecretForHome>();
+        }
+
+        return groupSecrets;
+    }
+    
+    private async Task DeleteSecret(string secretId)
+    {
+        var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+        
+        if (loggedInUser == null)
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.Token);
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+        
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.DeleteAsync($"https://localhost:5001/api/groups/secrets?secretId={secretId}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            if (request.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                Navigation.NavigateTo("/");
+                return;    
+            }
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please try again later");
+            return;
+        }
+
+        GroupSecrets = GroupSecrets.FindAll(u => !u.Id.Equals(secretId));
+    }
+    
     private void NavigateToGroups()
     {
         Navigation.NavigateTo("/groups");
@@ -180,6 +261,66 @@
         StateHasChanged();
         Console.WriteLine($"Changing secret title to {NewSecretTitle}");
     }
+
+    private void ChangeGroupSecrets(List<SecretForHome> Secrets)
+    {
+        GroupSecrets = Secrets;
+        StateHasChanged();
+    }
+    
+    private async Task CreateSecret(string newSecretContent)
+    {
+        var user = (UserForHome)await LocalStorage
+            .Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (user == null)
+        {
+            Navigation.NavigateTo("/login");
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+        
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var newSecretForCreation = new SecretForCreation()
+        {
+            Title = NewSecretTitle,
+            Content = newSecretContent,
+            OwnerId = user.Id
+        };
+
+        var newGroupSecretForCreation = new GroupSecretsForCreation()
+        {
+            GroupId = id,
+            Secret = newSecretForCreation
+        };
+
+        var request = await HttpClient.PostAsJsonAsync("https://localhost:5001/api/groups/secrets", newGroupSecretForCreation);
+        if (!request.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please try again later");
+            return;
+        }
+
+        var newSecret = await request.Content.ReadFromJsonAsync<SecretForHome>();
+        if (newSecret == null)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please try again later");
+            return;
+        }
+
+        GroupSecrets.Insert(0, newSecret);
+        NewSecretTitle = string.Empty;
+        IsNewSecretTriggered = !IsNewSecretTriggered;
+    }
     
     private void RenderContent(RenderTreeBuilder builder)
     {
@@ -188,6 +329,7 @@
             builder.OpenComponent<NewSecretsScreen>(0);
             builder.AddAttribute(1, "IsNewSecretTriggered", IsNewSecretTriggered);
             builder.AddAttribute(2, "NewSecretTitle", NewSecretTitle);
+            builder.AddAttribute(3, "CreateSecret", CreateSecret);
             builder.CloseComponent();
             return;
         }
@@ -212,6 +354,7 @@
 
         builder.OpenComponent<Secrets>(0);
         builder.AddAttribute(1, "GroupSecrets", GroupSecrets);
+        builder.AddAttribute(2, "DeleteSecret", DeleteSecret);
         builder.CloseComponent();        
     }
     
