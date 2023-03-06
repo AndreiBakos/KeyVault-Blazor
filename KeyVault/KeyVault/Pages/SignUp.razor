@@ -1,45 +1,58 @@
 @page "/signup"
+@using KeyVault.Tools
+@using KeyVault.Entities
+@using KeyVault.Data
+@using System.Net.Http.Headers
+@using KeyVault.Models.User
+@using Newtonsoft.Json
+@using JsonSerializer = System.Text.Json.JsonSerializer
 @inject NavigationManager Navigation
+@inject IJSRuntime JsRuntime
+@inject HttpClient HttpClient
+@inject LocalStorage LocalStorage
 
 <head>
     <link rel="stylesheet" href="~/css/shared.css" />
 </head>
 
-<div style="display: grid; place-items: center;">
-    <h1 class="header-text">Create your account</h1>
-    <div class="form-container">            
-        <div class="form-group">
-            <label> Username:</label>
-            <input class="password-input-container" style="color: black; padding: 15px;" type="text" @bind="UserName" />
-        </div>
-        <div class="form-group">
-            <label> Email:</label>
-            <input class="password-input-container" style="color: black; padding: 15px;" type="email" @bind="Email" />
-        </div>
-        <div class="form-group">
-            <label> Password:</label>
-            <div class="password-input-container">
-                <input style="
-                border: 0;
-                 color: black;
-                  background-color: #ffffff00;
-                   width: 90%;
-                    height: 100%;
-                    padding: 15px;"
-                   class="password-input-container" 
-                   type="@( IsHidden ? "password" : "text" )" @bind="@Password"/>
-                <img class="show-hide-password" style="width: 40px; height: 40px; align-self: center;"
-                                     src="@( IsHidden ? "Assets/hide-password.svg" : "Assets/show-password.svg" )" 
-                                     @onclick="() => IsHidden=!IsHidden"/>
+@if (!IsFirstRender)
+{
+    <div style="display: grid; place-items: center;">
+        <h1 class="header-text">Create your account</h1>
+        <div class="form-container">            
+            <div class="form-group">
+                <label> Username:</label>
+                <input class="password-input-container" style="color: black; padding: 15px;" type="text" @bind="UserName" />
             </div>
+            <div class="form-group">
+                <label> Email:</label>
+                <input class="password-input-container" style="color: black; padding: 15px;" type="email" @bind="Email" />
+            </div>
+            <div class="form-group">
+                <label> Password:</label>
+                <div class="password-input-container">
+                    <input style="
+                    border: 0;
+                     color: black;
+                      background-color: #ffffff00;
+                       width: 90%;
+                        height: 100%;
+                        padding: 15px;"
+                       class="password-input-container" 
+                       type="@( IsHidden ? "password" : "text" )" @bind="@Password"/>
+                    <img class="show-hide-password" style="width: 40px; height: 40px; align-self: center;"
+                                         src="@( IsHidden ? "Assets/hide-password.svg" : "Assets/show-password.svg" )" 
+                                         @onclick="() => IsHidden=!IsHidden"/>
+                </div>
+            </div>
+            <div style="display: flex; color: black; align-self: center">
+                <p style="color: white">Already have an account?</p>
+                <button style="padding-bottom: 15px;" class="log-in-button" type="button" @onclick="GoToLogin">Log In</button>
+            </div>
+            <button class="submit-btn" type="button" @onclick="HandleSubmit">Sign Up</button>
         </div>
-        <div style="display: flex; color: black; align-self: center">
-            <p style="color: white">Already have an account?</p>
-            <button style="padding-bottom: 15px;" class="log-in-button" type="button" @onclick="GoToLogin">Log In</button>
-        </div>
-        <button class="submit-btn" type="button" @onclick="GoToHome">Sign Up</button>
     </div>
-</div>
+}
 
 
 @code {
@@ -47,6 +60,30 @@
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
     private bool IsHidden { get; set; } = true;
+    private Validator Validator { get; set; } = new Validator();
+    private bool IsFirstRender { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var isLoggedIn = await CheckIfLoggedIn();
+            
+            if (isLoggedIn)
+            {
+                Navigation.NavigateTo("/home");
+            }
+            IsFirstRender = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<bool> CheckIfLoggedIn()
+    {
+        var response = await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        return response != null;
+    }
 
     private void GoToHome()
     {
@@ -57,10 +94,80 @@
     {
         Navigation.NavigateTo("/");
     }
-    public void PrintEmail()
+
+    private async Task HandleSubmit()
     {
-        Console.WriteLine(UserName);
-        Console.WriteLine(Email);
-        Console.WriteLine(Password);
+        if (
+            string.IsNullOrEmpty(UserName) ||
+            string.IsNullOrEmpty(Email) ||
+            string.IsNullOrEmpty(Password))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Please fill in the form!");
+            return;
+        }
+
+        if (UserName.Length > 15)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "UserName too long!");
+            return;            
+        }
+
+        if (UserName.Contains("'"))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Invalid username provided!");
+            return;
+        }
+
+        if (!Validator.ValidateEmail(Email))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Invalid email provided!");
+            return;
+        }
+
+        if (Password.Length < 7)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Password too short!");
+            return;
+        }
+        if (Password.Contains("'"))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Invalid Password!");
+            return;
+        }
+        
+        var tokenRequest = await HttpClient.GetAsync("https://localhost:5001/api/crypto");
+        var token = await tokenRequest.Content.ReadFromJsonAsync<Crypto>();
+
+        if (string.IsNullOrEmpty(token?.jwt))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Failed to generate Token!");
+            return;
+        }
+        
+        await LocalStorage.Set(JsRuntime, StorageData.Token, token.jwt);
+
+        var hashedPassword = CryptoTool.ComputeSha256Hash(Password);
+        
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token.jwt);
+
+        var newUserForCreation = new UserForCreation()
+        {
+            UserName = UserName,
+            Email = Email,
+            Password = hashedPassword
+        };
+
+        var newUserResponse = await HttpClient.PostAsJsonAsync("https://localhost:5001/api/users/create", newUserForCreation);
+
+        if (!newUserResponse.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong with user creation! Please try again");
+        }
+
+        var newUser = await newUserResponse.Content.ReadFromJsonAsync<UserForHome>();
+
+        await LocalStorage.Set(JsRuntime, StorageData.LoggedInUser, JsonSerializer.Serialize(newUser));
+        Navigation.NavigateTo("/home");
     }
 }

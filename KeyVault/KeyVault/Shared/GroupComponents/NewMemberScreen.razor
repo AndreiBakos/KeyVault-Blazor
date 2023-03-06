@@ -1,4 +1,5 @@
 @using KeyVault.Models.User
+
 <div style="background-color: #363636">
     <div style="display: flex; flex-direction: column;"
          class="create-secret-conatiner">
@@ -13,16 +14,18 @@
                 <div class="secrets-content" key="@user.Id">
                     <p class="secrets-values">@user.UserName</p>
                     <p class="secrets-values">@user.Email</p>
-                <img class="delete-secret-btn" 
-                     src="@(user.Checked ? "Assets/checked-box.svg" : "Assets/unchecked-box.svg")"
-                     alt=""/>
+                    <img class="delete-secret-btn" 
+                         src="@(user.Checked ? "Assets/checked-box-logo.svg" : "Assets/unchecked-box-logo.svg")"
+                         alt="" 
+                         @onclick="() => HandleCheckBox(user)" />
                 </div>
             }
         }
 
     </div>
     <button class="submit-new-secret"
-            type="submit">Add User</button>
+            type="submit"
+            @onclick="async Task() => await AddMembersToGroup()">Add User</button>
 </div>
 @code {
     [Parameter]
@@ -32,5 +35,20 @@
     public string NewUserName { get; set; }
     
     [Parameter]
+    public List<UserForHomeSearch> GroupMembersList { get; set; }
+    
+    [Parameter]
+    public Action<List<UserForHomeSearch>> ChangeGroupMembersList { get; set; }
+    
+    [Parameter]
     public string NoUserFoundErrorTrigger { get; set; }
+    
+    [Parameter]
+    public Action<UserForHomeSearch> HandleCheckBox { get; set; }
+    
+    [Parameter]
+    public List<UserForHome> SelectedUsersList { get; set; }
+    
+    [Parameter]
+    public Func<Task> AddMembersToGroup { get; set; }
 }

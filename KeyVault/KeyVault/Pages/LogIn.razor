@@ -1,60 +1,140 @@
-@page "/"
+@page "/login"
+@using KeyVault.Data
+@using KeyVault.Models.User
+@using KeyVault.Tools
+@using System.Net.Http.Headers
+@using KeyVault.Entities
+@using JsonSerializer = System.Text.Json.JsonSerializer
+@using System.Net
 @inject NavigationManager Navigation
+@inject IJSRuntime JsRuntime
+@inject HttpClient HttpClient
+@inject LocalStorage LocalStorage
 
 <head>
     <link rel="stylesheet" href="~/css/shared.css" />
 </head>
-
-<div class="login-container">
-    <h1 class="header-text">Welcome to KeyVault!</h1>
-    <div class="form-container">
-        <div class="form-group">
-            <p>Email Value: @Email</p>
-            <label>Email:</label>
-            <input style="border: 0; outline: none; color: black; padding: 15px" class="password-input-container" type="text" @bind="@Email"/>
-        </div>
-        <div class="form-group">
-            <p>Password Value: @Password</p>
-            <label> Password:</label>
-            <div class="password-input-container">
-                <input style="border: 0;
-                 color: black;
-                  background-color: #ffffff00;
-                   width: 90%;
-                    height: 100%;
-                    padding: 15px;"
-                       class="password-input-container" 
-                       type="@( IsHidden ? "password" : "text" )" @bind="@Password"/>
-                <img class="show-hide-password" style="width: 40px; height: 40px; align-self: center"
-                     src="@( IsHidden ? "Assets/hide-password.svg" : "Assets/show-password.svg" )" 
-                     @onclick="() => IsHidden=!IsHidden"/>
+@if (!IsFirstRender)
+{
+    <div class="login-container">
+        <h1 class="header-text">Welcome to KeyVault!</h1>
+        <div class="form-container">
+            <div class="form-group">
+                <label>Email:</label>
+                <input style="border: 0; outline: none; color: black; padding: 15px" class="password-input-container" type="text" @bind="@Email"/>
             </div>
+            <div class="form-group">
+                <label> Password:</label>
+                <div class="password-input-container">
+                    <input style="border: 0;
+                     color: black;
+                      background-color: #ffffff00;
+                       width: 90%;
+                        height: 100%;
+                        padding: 15px;"
+                           class="password-input-container" 
+                           type="@( IsHidden ? "password" : "text" )" @bind="@Password"/>
+                    <img class="show-hide-password" style="width: 40px; height: 40px; align-self: center"
+                         src="@( IsHidden ? "Assets/hide-password.svg" : "Assets/show-password.svg" )" 
+                         @onclick="() => IsHidden=!IsHidden"/>
+                </div>
+            </div>
+            <div style="display: flex; color: black; align-self: center">
+                <p style="color: #ffffffee">Don't have an account?</p>
+                <button class="sign-up-button" type="button" @onclick="GoToSignUp">Sign Up</button>
+            </div>
+            <button class="submit-btn" type="button" @onclick="HandleSubmit">Login</button>
         </div>
-        <div style="display: flex; color: black; align-self: center">
-            <p style="color: #ffffffee">Don't have an account?</p>
-            <button class="sign-up-button" type="button" @onclick="GoToSignUp">Sign Up</button>
-        </div>
-        <button class="submit-btn" type="button" @onclick="GoToHome">Login</button>
     </div>
-</div>
+}
 
 @code {
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
     private bool IsHidden { get; set; } = true;
+    private Validator Validator { get; set; } = new Validator();
+    private bool IsFirstRender { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var isLoggedIn = await CheckIfLoggedIn();
+            
+            if (isLoggedIn)
+            {
+                Navigation.NavigateTo("/home");
+            }
+            IsFirstRender = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<bool> CheckIfLoggedIn()
+    {
+        var response = await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        return response != null;
+    }
 
     private void GoToSignUp()
     {
         Navigation.NavigateTo("/signup");
     }
 
-    private void GoToHome()
+    private async Task HandleSubmit()
     {
-        Navigation.NavigateTo("/home");
-    }
+        if (string.IsNullOrEmpty(Email) || string.IsNullOrEmpty(Password))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Please fill in the form!");
+            return;
+        }
 
-    public void PrintEmail()
-    {
-        Console.WriteLine(Email);
+        if (!Validator.ValidateEmail(Email))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Invalid email provided!");
+            return;
+        }
+
+        if (Password.Length < 7)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Password too short!");
+            return;
+        }
+        if (Password.Contains("'"))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Invalid Password!");
+            return;
+        }
+
+        var tokenRequest = await HttpClient.GetAsync("https://localhost:5001/api/crypto");
+        var token = await tokenRequest.Content.ReadFromJsonAsync<Crypto>();
+
+        if (string.IsNullOrEmpty(token?.jwt))
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Failed to generate Token!");
+            return;
+        }
+
+        await LocalStorage.Set(JsRuntime, StorageData.Token, token.jwt);
+
+        var hashedPassword = CryptoTool.ComputeSha256Hash(Password);
+        
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token.jwt);
+
+        var userRequest = await HttpClient
+            .GetAsync($"https://localhost:5001/api/users/login?email={Email}&password={hashedPassword}");
+
+        if (userRequest.StatusCode == (HttpStatusCode)StatusCodes.Status204NoContent)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "No user found!");
+            return;
+        }
+
+        var user = await userRequest.Content.ReadFromJsonAsync<UserForHome>();
+
+        await LocalStorage.Set(JsRuntime,StorageData.LoggedInUser, JsonSerializer.Serialize(user));
+        Navigation.NavigateTo("/home");
     }
 }

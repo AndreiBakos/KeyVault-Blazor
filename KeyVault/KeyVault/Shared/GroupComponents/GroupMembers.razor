@@ -1,27 +1,134 @@
 @using KeyVault.Models.User
+@using KeyVault.Models.Groups
+@using KeyVault.Tools
+@using KeyVault.Data
+@using System.Net.Http.Headers
+@using System.Net
+@using System.Text.Json
+@inject NavigationManager Navigation
+@inject LocalStorage LocalStorage
+@inject IJSRuntime JsRuntime
+@inject HttpClient HttpClient
+
 <div>
     @foreach (var member in GroupMembersList)
     {
-        <div className='secrets-content' key={member.id}>
-            <p className='secrets-values'>{member.userName}</p>
-            <p className='secrets-values'>{member.email}</p>
-            @* contextComponent?.loggedInUser?.id === currentGroup.ownerId ? *@
-            @*         member.id !== currentGroup.ownerId  *@
-            @*         ? *@
-            @*             <img className='delete-secret-btn' src={member.checked ? checkedBox : uncheckedBox} onClick={() => handleCheckBoxForMembers(member)} /> *@
-            @*         : *@
-            @*             <p className='secrets-values'>OWNER</p> *@
-            @*         : *@
-            @*         <p></p> *@
+        <div class="secrets-content" key={member.id}>
+            <p class="secrets-values">@member.UserName</p>
+            <p class="secrets-values">@member.Email</p>
+            @if (LoggedInUserId == CurrentGroup.OwnerId)
+            {
+                @if (member.Id != CurrentGroup.OwnerId)
+                {
+                    <img class="delete-secret-btn" 
+                         src="@(member.Checked ? "Assets/checked-box-logo.svg" : "Assets/unchecked-box-logo.svg")"
+                         @onclick="() => HandleMemberCheckBox(member)"/>
+                }
+                else
+                {
+                    <p class="secrets-values">OWNER</p>
+                }
+            }else
+            {
+                <p></p>
+            }
         </div>
     }
-    @* currentGroup.ownerId === contextComponent?.loggedInUser?.id && *@
-    <button class="delete-group-btn"
-            type="submit">Remove Member</button>
-    
+    @if (CurrentGroup.OwnerId == LoggedInUserId)
+    {
+        <button class="delete-group-btn"
+                type="submit"
+                @onclick="async Task() => await RemoveMember()">Remove Member</button>
+    }
 </div>
 
 @code {
     [Parameter]
     public List<UserForHomeSearch> GroupMembersList { get; set; }
+    
+    [Parameter]
+    public GroupsForHome CurrentGroup { get; set; }
+
+    [Parameter]
+    public string LoggedInUserId { get; set; }
+    
+    [Parameter]
+    public List<UserForHome> GroupMemberListToRemove { get; set; }
+    
+    [Parameter]
+    public Action<List<UserForHome>> ChangeGroupMemberListToRemove { get; set; }
+    
+    [Parameter]
+    public Action<UserForHomeSearch> HandleMemberCheckBox { get; set; }
+    
+    [Parameter]
+    public Action<List<UserForHomeSearch>> ChangeGroupMembersList { get; set; }
+
+    private async Task RemoveMember()
+    {
+        var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+        if (loggedInUser == null)
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.Token);
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        if (GroupMemberListToRemove.Count == 0)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong!");
+            return;
+        }
+        var stringIds = new List<string>();
+        foreach (var member in GroupMemberListToRemove)
+        {
+            stringIds.Add(member.Id);
+        }
+
+        var request = await HttpClient.DeleteAsync($"https://localhost:5001/api/groups/members?ids={string.Join(',', stringIds)}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            if (request.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                Navigation.NavigateTo("/login");
+                return;
+            }
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            return;
+        }
+
+        var newGroupMemberList = new List<UserForHomeSearch>();
+        foreach (var member in GroupMembersList)
+        {
+            if (!GroupMemberListToRemove.Any(m => m.Id.Equals(member.Id)))
+            {
+                newGroupMemberList.Add(new UserForHomeSearch()
+                {
+                    Id = member.Id,
+                    UserName = member.UserName,
+                    Email = member.Email,
+                    Checked = false
+                });
+            }
+        }
+        ChangeGroupMemberListToRemove.Invoke(new List<UserForHome>());
+        ChangeGroupMembersList.Invoke(newGroupMemberList);
+    }
 }

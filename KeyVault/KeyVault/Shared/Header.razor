@@ -2,7 +2,11 @@
 @using KeyVault.Entities
 @using KeyVault.Models.Secrets
 @using KeyVault.Models.User
+@using KeyVault.Tools
+@using KeyVault.Data
 @inject NavigationManager Navigation
+@inject LocalStorage LocalStorage
+@inject IJSRuntime JsRuntime
 
 <div>
     <div class="header-menu">
@@ -29,17 +33,15 @@
     </div>
 </div>
 
+
 @code {
     [Parameter]
     public SecretsPage CurrentPage { get; set; }
 
-    public bool SettingMenu { get; set; } = true;
-    public UserForHome LoggedInUser { get; set; } = new UserForHome()
-    {
-        Id = Guid.NewGuid().ToString(),
-        UserName = "AndreiTest",
-        Email = "andrei@test.test"
-    };
+    [Parameter]
+    public UserForHome LoggedInUser { get; set; }
+
+    private bool SettingMenu { get; set; } = true;
 
     private void NavigateHome()
     {
@@ -50,8 +52,10 @@
     {
         Navigation.NavigateTo("/groups");
     }
-    private void Logout()
+    private async Task Logout()
     {
+        await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+        await LocalStorage.Remove(JsRuntime, StorageData.Token);
         Navigation.NavigateTo("/");
     }
 }

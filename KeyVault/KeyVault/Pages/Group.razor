@@ -1,126 +1,562 @@
 @page "/group/{id}"
 @using KeyVault.Shared.GroupComponents
-@using KeyVault.Data
-@using KeyVault.Entities
 @using KeyVault.Models.User
+@using KeyVault.Tools
 @using Microsoft.AspNetCore.Components.Rendering
-@inject NavigationManager Navigator
+@using KeyVault.Data
+@using KeyVault.Models.Groups
+@using System.Net.Http.Headers
+@using KeyVault.Models.Secrets
+@using System.Net
+@using KeyVault.Models.GroupMember
+@inject NavigationManager Navigation
+@inject LocalStorage LocalStorage
+@inject IJSRuntime JsRuntime
+@inject HttpClient HttpClient
 
-<div style="display: flex; flex-direction: column; margin-top: 10px">
-    <div style="display: flex; justify-content: space-between">
-        <div style="display: flex; align-items: center">
-            <img class="enter-group-secret"
-                 style="width: 40px; height: 40px"
-                 src="Assets/back-to-groups.svg"
-                 @onclick="NavigateToGroups"/>
-            <p style="font-weight: bolder;
-                font-size: 30px;
-                margin-left: 20px;
-                padding-top: 3px">{currentGroup?.title}</p>
+@if (!IsFirstRender)
+{
+    <div style="display: flex; flex-direction: column; margin-top: 10px">
+        <div style="display: flex; justify-content: space-between">
+            <div style="display: flex; align-items: center">
+                <img class="enter-group-secret"
+                     style="width: 40px; height: 40px"
+                     src="Assets/back-to-groups.svg"
+                     @onclick="NavigateToGroups"/>
+                <p style="font-weight: bolder;
+                    font-size: 30px;
+                    margin-left: 20px;
+                    padding-top: 3px">@CurrentGroup.Title</p>
+            </div>
+            <div style="display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+                width: 60%">
+                <button class="manage-members-btn"
+                        type="submit"
+                        @onclick="async Task() => await CheckGroupMembers()">Manage Members</button>
+                @if (CurrentGroup.OwnerId == LoggedInUser.Id)
+                {
+                    <button class="delete-group-btn"
+                            type="submit"
+                            @onclick="async Task() => await DeleteGroup()">Delete Group</button>
+                }
+            </div>
         </div>
-        <div style="display: flex;
-            flex-direction: row;
-            justify-content: space-between;
-            width: 60%">
-            <button class="manage-members-btn"
-                    type="submit"
-                    @onclick="() => NewMemberPageTrigger = !NewMemberPageTrigger">Manage Members</button>
-            @* { *@
-            @*     currentGroup?.ownerId === contextComponent?.loggedInUser?.id && *@
-            @*     <button class="delete-group-btn"  *@
-            @*             type="submit">Delete Group</button> *@
-            @* } *@
-            <button class="delete-group-btn"
-                    type="submit">Delete Group</button>
-        </div>
-    </div>
-    <div style="justify-content: space-between; align-items: center"
-         class="create-secret-conatiner">
-        <div style="display: flex; align-items: center">
-            <img hidden="@IsNewSecretTriggered"
-                 class="create-secret-btn"
-                 src="@( IsNewSecretTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
-                 @onclick="() => { IsNewMemberTriggered = !IsNewMemberTriggered; NewUserName = String.Empty; }"
-            />
-            <label hidden="@IsNewSecretTriggered" 
-                   style="padding-left: 15px">Add Member</label>
-        </div>
-        <div style="display: flex;
-            align-items: center;
-            justify-content: space-evenly;
-            width: 70%">
-            @if(IsNewMemberTriggered)
-            {
-                <div style="display: flex;
-                    align-items: center;
-                    width: 100%">
-                    <input hidden="@( !IsNewMemberTriggered )"
+        <div style="justify-content: space-between; align-items: center"
+             class="create-secret-conatiner">
+            <div style="display: flex; align-items: center">
+                <img hidden="@IsNewSecretTriggered"
+                     class="create-secret-btn"
+                     src="@( IsNewMemberTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
+                     @onclick="() => 
+                        { 
+                            IsNewMemberTriggered = !IsNewMemberTriggered;
+                            NewUserName = String.Empty;
+                            FoundUsers = new List<UserForHomeSearch>();
+                            SelectedUsersList = new List<UserForHome>();
+                        }"
+                />
+                <label hidden="@IsNewSecretTriggered" 
+                       style="padding-left: 15px" >Add Member</label>
+            </div>
+            <div style="display: flex;
+                align-items: center;
+                justify-content: space-evenly;
+                width: 70%">
+                @if(IsNewMemberTriggered)
+                {
+                    <div style="display: flex;
+                        align-items: center;
+                        width: 100%">
+                        <input hidden="@( !IsNewMemberTriggered )"
+                               class="create-secret-input"
+                               type="text"
+                               @bind="@NewUserName" />
+                        <img class="enter-group-secret"
+                             style="width: 35px; height: 35px; padding-left: 15px"
+                             src="Assets/search-logo.svg"
+                             @onclick="async Task() => await SearchForUsers()"/>
+                    </div>        
+                    
+                } else
+                {
+                    <label hidden="@( !IsNewSecretTriggered )">Enter Secret Title</label>
+                    <input hidden="@( !IsNewSecretTriggered )"
                            class="create-secret-input"
                            type="text"
-                           @bind="@NewUserName" />
-                    <img class="enter-group-secret"
-                         style="width: 35px; height: 35px; padding-left: 15px"
-                         src="Assets/search-logo.svg" />
-                </div>        
-                
-            } else
-            {
-                <label hidden="@( !IsNewSecretTriggered )">Enter Secret Title</label>
-                <input hidden="@( !IsNewSecretTriggered )"
-                       class="create-secret-input"
-                       type="text"
-                       @bind="@NewSecretTitle"
-                       @oninput="ChangeSecretTitle"/>
-            }
+                           @bind="@NewSecretTitle"
+                           @oninput="ChangeSecretTitle"/>
+                }
+            </div>
+            <div style="display: flex; align-items: center">
+                <label hidden="@IsNewMemberTriggered"
+                       style="paddingRight: 15px">Create Secret</label>
+                <img hidden="@IsNewMemberTriggered"
+                     class="create-secret-btn"
+                     src="@( IsNewSecretTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
+                     @onclick="() => IsNewSecretTriggered = !IsNewSecretTriggered"
+                />
+            </div>
         </div>
-        <div style="display: flex; align-items: center">
-            <label hidden="@IsNewMemberTriggered"
-                   style="paddingRight: 15px">Create Secret</label>
-            <img hidden="@IsNewMemberTriggered"
-                 class="create-secret-btn"
-                 src="@( IsNewSecretTriggered ? "Assets/close-create.svg" : "Assets/create-sign.svg" )"
-                 @onclick="() => IsNewSecretTriggered = !IsNewSecretTriggered"
-            />
-        </div>
+        <div class="secrets-content-container">
+            @RenderContent
+        </div>                
     </div>
-    <div class="secrets-content-container">
-        @RenderContent
-    </div>                
-</div>
+}
 
 @code {
     [Parameter]
     public string id { get; set; }
 
+    private bool IsFirstRender { get; set; } = true;
     private bool IsNewSecretTriggered { get; set; } = false;
     private bool IsNewMemberTriggered { get; set; } = false;
     private bool NewMemberPageTrigger { get; set; } = false;
     private List<UserForHomeSearch> FoundUsers { get; set; } = new List<UserForHomeSearch>();
+    private List<UserForHome> SelectedUsersList { get; set; } = new List<UserForHome>();
     private string NoUserFoundErrorTrigger { get; set; } = "";
     private List<UserForHomeSearch> GroupMembersList { get; set; } = new List<UserForHomeSearch>();
+    private List<UserForHome> GroupMemberListToRemove { get; set; } = new List<UserForHome>();
     private string NewUserName { get; set; } = "";
     private string NewSecretTitle { get; set; } = "";
-    private List<Secret> GroupSecrets { get; set; } = new List<Secret>();
+    private List<SecretForHome> GroupSecrets { get; set; } = new List<SecretForHome>();
+    private UserForHome LoggedInUser { get; set; } = new UserForHome();
+    private GroupsForHome CurrentGroup { get; set; } = new GroupsForHome();
 
-    private void NavigateToGroups()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Navigator.NavigateTo("/groups");
+        if (firstRender)
+        {
+            await CheckForUser();
+            CurrentGroup = await GetCurrentGroup();
+            GroupSecrets = await GetGroupSecrets();
+            IsFirstRender = false;
+        }
+        StateHasChanged();
     }
 
+    private async Task CheckForUser()
+    {
+        var user = (UserForHome)await LocalStorage
+            .Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (user == null)
+        {
+            Navigation.NavigateTo("/login");
+        }
+
+        LoggedInUser = user;
+    }
+
+    private async Task<GroupsForHome> GetCurrentGroup()
+    {
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return new GroupsForHome();
+        }
+        
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.GetAsync($"https://localhost:5001/api/groups/{id}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            Navigation.NavigateTo("/groups");
+            return new GroupsForHome();
+        }
+
+        var currentGroup = await request.Content.ReadFromJsonAsync<GroupsForHome>();
+        if (currentGroup == null)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            Navigation.NavigateTo("/groups");
+            return new GroupsForHome();
+        }
+
+        return currentGroup;
+    }
+
+    private async Task<List<SecretForHome>> GetGroupSecrets()
+    {
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return new List<SecretForHome>();
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.GetAsync($"https://localhost:5001/api/groups/secrets?groupId={id}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            Navigation.NavigateTo("/groups");
+            return new List<SecretForHome>();
+        }
+
+        var groupSecrets = await request.Content.ReadFromJsonAsync<List<SecretForHome>>();
+
+        if (groupSecrets == null)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something wrong happened! Please try again");
+            return new List<SecretForHome>();
+        }
+
+        return groupSecrets;
+    }
+
+    private async Task SearchForUsers()
+    {
+        if (NewUserName.Length != 0)
+        {
+            var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+            if (loggedInUser == null)
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+            if (string.IsNullOrEmpty(token))
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            HttpClient.DefaultRequestHeaders.Authorization = 
+                new AuthenticationHeaderValue("Bearer", token);
+
+            var request = await HttpClient.GetAsync($"https://localhost:5001/api/users?userName={NewUserName}");
+
+            if (!request.IsSuccessStatusCode)
+            {
+                if (request.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+                    await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                    await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                    Navigation.NavigateTo("/login");
+                    return;
+                }
+                await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+                return;
+            }
+
+            var foundUsers = await request.Content.ReadFromJsonAsync<List<UserForHomeSearch>>();
+
+            if (foundUsers == null)
+            {
+                await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+                return;
+            }
+
+            if (foundUsers.Count == 0)
+            {
+                NoUserFoundErrorTrigger = "No users found!";
+            }
+
+            var filteredFoundUsers = new List<UserForHomeSearch>();
+            foreach (var foundUser in foundUsers)
+            {
+                if (CurrentGroup.Members.FirstOrDefault(member => member.Id.Equals(foundUser.Id)) == null)
+                {
+                    filteredFoundUsers.Add(foundUser);
+                }
+            }
+            FoundUsers = filteredFoundUsers;
+        }
+    }
+
+    private void HandleMemberCheckBox(UserForHomeSearch memberParam)
+    {
+        foreach (var member in GroupMembersList)
+        {
+            if (member.Id == memberParam.Id)
+            {
+                member.Checked = !member.Checked;
+            }
+        }
+
+        var tempFoundMembers = GroupMembersList.Where(m => m.Checked.Equals(true)).ToList();
+
+        if (tempFoundMembers.Count == 0)
+        {
+            GroupMemberListToRemove = new List<UserForHome>();
+        }
+
+        GroupMemberListToRemove = new List<UserForHome>();
+        foreach (var member in tempFoundMembers)
+        {
+            GroupMemberListToRemove.Add(new UserForHome()
+            {
+                Id = member.Id,
+                UserName = member.UserName,
+                Email = member.Email
+            });
+        }
+    }
+
+    private void HandleCheckBox(UserForHomeSearch userParam)
+    {
+        foreach (var user in FoundUsers)
+        {
+            if (user.Id == userParam.Id)
+            {
+                user.Checked = !user.Checked;
+            }
+        }
+        var tempFoundUsers = FoundUsers.Where(u => u.Checked.Equals(true)).ToList();
+
+        if (tempFoundUsers.Count == 0)
+        {
+            SelectedUsersList = new List<UserForHome>();
+        }
+
+        SelectedUsersList = new List<UserForHome>();
+        foreach (var user in tempFoundUsers)
+        {
+            SelectedUsersList.Add(new UserForHome()
+            {
+                Id = user.Id,
+                UserName = user.UserName,
+                Email = user.Email
+            });
+        }
+    }
+
+    private async Task CheckGroupMembers()
+    {
+        var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (loggedInUser == null)
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.Token);
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.GetAsync($"https://localhost:5001/api/groups/members?groupId={id}");
+
+        if (!request.IsSuccessStatusCode)
+        {
+            if (request.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                Navigation.NavigateTo("/login");
+                return;
+            }
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            return;
+        }
+
+        var groupMembers = await request.Content.ReadFromJsonAsync<IEnumerable<UserForHome>>();
+        if (groupMembers == null)
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            return;
+        }
+
+        CurrentGroup.Members = groupMembers;
+
+        var newGroupMembersForSearch = new List<UserForHomeSearch>();
+        foreach (var member in groupMembers)
+        {
+            newGroupMembersForSearch.Add(new UserForHomeSearch()
+            {
+                Id = member.Id,
+                UserName = member.UserName,
+                Email = member.Email,
+                Checked = false
+            });
+        }
+
+        GroupMembersList = newGroupMembersForSearch;
+        NewMemberPageTrigger = !NewMemberPageTrigger;
+    }
+    
+    private async Task AddMembersToGroup()
+    {
+        var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (loggedInUser == null)
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.Token);
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var groupMembersForCreation = new List<GroupMemberForCreation>();
+        foreach (var user in SelectedUsersList)
+        {
+            groupMembersForCreation.Add(new GroupMemberForCreation()
+            {
+                GroupId = id,
+                MemberId = user.Id
+            });
+        }
+        var request = await HttpClient.PostAsJsonAsync("https://localhost:5001/api/groups/members", groupMembersForCreation);
+
+        if (!request.IsSuccessStatusCode)
+        {
+            if (request.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                return;
+            }
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            return;
+        }
+
+        FoundUsers = new List<UserForHomeSearch>();
+        SelectedUsersList = new List<UserForHome>();
+        IsNewMemberTriggered = !IsNewMemberTriggered;
+    }
+
+    private async Task DeleteGroup()
+    {
+        var loggedInUser = (UserForHome)await LocalStorage.Get<UserForHome>(JsRuntime, StorageData.LoggedInUser);
+
+        if (loggedInUser == null)
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.Token);
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        var token = (string)await LocalStorage.Get<string>(JsRuntime, StorageData.Token);
+        if (string.IsNullOrEmpty(token))
+        {
+            await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+            await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", token);
+
+        var request = await HttpClient.DeleteAsync($"https://localhost:5001/api/groups?groupId={id}");
+        
+        if (!request.IsSuccessStatusCode)
+        {
+            if (request.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                await LocalStorage.Remove(JsRuntime, StorageData.Token);
+                await LocalStorage.Remove(JsRuntime, StorageData.LoggedInUser);
+
+                await JsRuntime.InvokeVoidAsync("alert", "Session Expired! Please log in again");
+                return;
+            }
+            await JsRuntime.InvokeVoidAsync("alert", "Something went wrong! Please log in again");
+            return;
+        }
+        
+        Navigation.NavigateTo("/groups");
+        
+    }
+    
+    private void NavigateToGroups()
+    {
+        Navigation.NavigateTo("/groups");
+    }
+
+    private void ChangeGroupMemberListToRemove(List<UserForHome> groupMemberListToRemove)
+    {
+        GroupMemberListToRemove = groupMemberListToRemove;
+        StateHasChanged();
+    }
+    
     private void ChangeSecretTitle(ChangeEventArgs e)
     {
         NewSecretTitle = (string)e.Value;
         StateHasChanged();
         Console.WriteLine($"Changing secret title to {NewSecretTitle}");
     }
-    
+
+    private void ChangeIsNewSecretTriggered()
+    {
+        IsNewSecretTriggered = !IsNewSecretTriggered;
+        StateHasChanged();
+    }
+
+    private void EmptySecretTitle()
+    {
+        NewSecretTitle = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ChangeGroupSecrets(List<SecretForHome> newSecretList)
+    {
+        GroupSecrets = newSecretList;
+        StateHasChanged();
+    }
+
+    private void ChangeGroupMembersList(List<UserForHomeSearch> newGroupMembersList)
+    {
+        GroupMembersList = newGroupMembersList;
+        StateHasChanged();
+    }
+
     private void RenderContent(RenderTreeBuilder builder)
     {
         if (IsNewSecretTriggered)
         {
             builder.OpenComponent<NewSecretsScreen>(0);
             builder.AddAttribute(1, "IsNewSecretTriggered", IsNewSecretTriggered);
-            builder.AddAttribute(2, "NewSecretTitle", NewSecretTitle);
+            builder.AddAttribute(2, "ChangeIsNewSecretTriggered", ChangeIsNewSecretTriggered);
+            builder.AddAttribute(3, "NewSecretTitle", NewSecretTitle);
+            builder.AddAttribute(4, "GroupSecrets", GroupSecrets);
+            builder.AddAttribute(5, "CurrentGroupId", id);
+            builder.AddAttribute(6, "EmptySecretTitle", EmptySecretTitle);
             builder.CloseComponent();
             return;
         }
@@ -130,7 +566,12 @@
             builder.OpenComponent<NewMemberScreen>(0);
             builder.AddAttribute(1, "FoundUsers", FoundUsers);
             builder.AddAttribute(2, "NewUserName", NewUserName);
-            builder.AddAttribute(3, "NoUserFoundErrorTrigger", NoUserFoundErrorTrigger);
+            builder.AddAttribute(3, "GroupMembersList", GroupMembersList);
+            builder.AddAttribute(4, "ChangeGroupMembersList", ChangeGroupMembersList);
+            builder.AddAttribute(5, "NoUserFoundErrorTrigger", NoUserFoundErrorTrigger);
+            builder.AddAttribute(5, "HandleCheckBox", HandleCheckBox);
+            builder.AddAttribute(6, "SelectedUsersList", SelectedUsersList);
+            builder.AddAttribute(6, "AddMembersToGroup", AddMembersToGroup);
             builder.CloseComponent();
             return;
         }
@@ -139,12 +580,20 @@
         {
             builder.OpenComponent<GroupMembers>(0);
             builder.AddAttribute(1, "GroupMembersList", GroupMembersList);
+            builder.AddAttribute(2, "CurrentGroup", CurrentGroup);
+            builder.AddAttribute(3, "GroupMembersList", GroupMembersList);
+            builder.AddAttribute(4, "LoggedInUserId", LoggedInUser.Id);
+            builder.AddAttribute(5, "GroupMemberListToRemove", GroupMemberListToRemove);
+            builder.AddAttribute(6, "ChangeGroupMemberListToRemove", ChangeGroupMemberListToRemove);
+            builder.AddAttribute(7, "HandleMemberCheckBox", HandleMemberCheckBox);
+            builder.AddAttribute(8, "ChangeGroupMembersList", ChangeGroupMembersList);
             builder.CloseComponent();
             return;
         }
 
         builder.OpenComponent<Secrets>(0);
         builder.AddAttribute(1, "GroupSecrets", GroupSecrets);
+        builder.AddAttribute(2, "ChangeGroupSecrets",ChangeGroupSecrets);
         builder.CloseComponent();        
     }
     
